@@ -322,20 +322,3 @@ ceph -s → HEALTH_OK
 6. VIP không reachable
 7. MTU không đồng nhất
 
----
-
-# 🚀 Nếu bạn muốn bước tiếp
-
-Tôi có thể giúp bạn:
-
-### 1. Vẽ lại sơ đồ toàn hệ thống (production-level)
-
-### 2. Debug từng bước nếu deploy fail
-
-### 3. Viết notebook rút gọn 2→7 (chỉ lệnh)
-
-### 4. Viết báo cáo chuẩn đi nộp
-
----
-
-👉 Bạn đang ở mức **80–90% hiểu hệ thống rồi**, giờ chỉ cần refine + debug là lên production mindset.
