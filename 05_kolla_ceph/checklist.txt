@@ -1,0 +1,341 @@
+Dưới đây là **CHECKLIST FULL dự án của bạn (Ceph + OpenStack Kolla-Ansible)** — được tổ chức lại theo **các PHẦN LỚN → bước nhỏ → cực chi tiết**, đúng theo toàn bộ tài liệu bạn đang dùng  + Ceph doc 
+
+---
+
+# 🧭 I. TỔNG QUAN KIẾN TRÚC
+
+## 1. Topology
+
+* Server A: chạy **Controller VM + Ceph**
+* Server B, C: chạy **Compute bare metal + Ceph**
+* Ceph chạy **bare metal (không trong VM)**
+
+## 2. Network phân lớp
+
+* br-lab → SSH / Internet
+* br-mgmt → API OpenStack
+* br-storage → Ceph client
+* br-cluster → Ceph replication
+* br-ex → provider network (OVN tạo)
+
+---
+
+# ⚙️ II. PHẦN I — CHUẨN BỊ SERVER
+
+## B1. Update hệ thống
+
+* apt update / upgrade
+* reboot
+
+## B2. Cài package nền
+
+* KVM, libvirt, LVM, network tools
+* ❌ KHÔNG cài openvswitch
+
+## B3. Cấu hình libvirt
+
+* enable libvirtd
+* xóa default network
+
+## B4. Bật Nested KVM
+
+* Intel: kvm-intel nested=1
+
+## B5. Bật IOMMU
+
+* GRUB config
+* verify bằng dmesg
+
+## B6. Tạo LVM Thin Pool
+
+* pvcreate / vgcreate / lvcreate
+* define libvirt storage pool
+
+---
+
+# 🌐 III. PHẦN II — NETWORK FABRIC (VXLAN)
+
+## B7. Tạo br-mgmt (VXLAN 100)
+
+* vxlan interface
+* bridge FDB
+* assign IP 10.0.0.x
+
+## B8. Tạo br-storage (VXLAN 200)
+
+* IP 10.0.2.x
+* dùng cho Ceph client
+
+## B9. Tạo br-cluster (VXLAN 300)
+
+* IP 10.0.3.x
+* dùng cho replication Ceph
+
+## B10. Tạo dummy0
+
+* phục vụ br-ex (OVN)
+
+## B11. NAT + IP forward
+
+* NAT cho VM
+* NAT cho Floating IP
+
+## B12. Persistent network
+
+* netplan bridge
+* systemd vxlan service
+
+---
+
+# 🖥️ IV. PHẦN III — TEMPLATE CONTROLLER VM
+
+## B13. Download Ubuntu image
+
+## B14. Tạo VM bootstrap
+
+* cloud-init
+* IP tạm
+
+## B15. Cài package trong VM
+
+* Docker
+* Kolla-Ansible
+* Python venv
+* ceph-common
+
+## B16. Convert thành template
+
+* virt-sysprep
+* inject SSH key
+* readonly template
+
+---
+
+# 🧱 V. PHẦN IV — TẠO CONTROLLER VM
+
+## B17. Tạo cloud-init cho 3 VM
+
+* ctrl1 → 10.0.0.11
+* ctrl2 → 10.0.0.12
+* ctrl3 → 10.0.0.13
+
+## B18. Clone từ template
+
+* tạo LVM volume
+* virt-install
+
+## B19. Verify VM
+
+* IP đúng
+* ping internet
+* docker ok
+* br-mgmt tồn tại
+
+---
+
+# 💾 VI. PHẦN V — CEPH CLUSTER (CRITICAL)
+
+## B20. Chuẩn bị Ceph
+
+* cài ceph-common
+* /etc/hosts
+* SSH key
+* NTP sync
+
+## B21. Chuẩn bị OSD disk
+
+* wipe disk
+* xác định disk trống
+
+## B22. Bootstrap Ceph
+
+* cephadm bootstrap
+* mon-ip = br-storage
+
+## B23. Add node + deploy
+
+* add host B, C
+* deploy MON (3 node)
+* deploy MGR (HA)
+* add OSD
+
+👉 trạng thái:
+
+```
+ceph -s → HEALTH_OK
+```
+
+## B24. Tạo pool + user
+
+* images / volumes / vms / backups
+
+* tạo keyring:
+
+  * glance
+  * cinder
+  * nova
+
+* tạo ceph.conf
+
+* copy sang controller VM
+
+---
+
+# ☁️ VII. PHẦN VI — KOLLA-ANSIBLE
+
+## B25. Chuẩn bị Ceph config cho Kolla
+
+* copy ceph.conf + keyring
+* map vào:
+
+  * glance
+  * cinder
+  * nova
+
+## B26. Copy sang controller 2,3
+
+## B27. SSH key + inventory
+
+* ssh-keygen
+* ssh-copy-id ALL nodes
+
+### inventory:
+
+* control
+* compute
+* storage
+* monitoring
+* deployment
+
+## B28. Tắt libvirtd trên compute
+
+* cực kỳ quan trọng
+* tránh conflict với nova_libvirt
+
+## B29. globals.yml
+
+* network_interface = br-mgmt
+* neutron_external_interface = dummy0
+* Ceph backend enable
+
+## B30. Deploy OpenStack
+
+* kolla-genpwd
+* bootstrap-servers
+* prechecks
+* pull
+* deploy
+* post-deploy
+
+---
+
+# 🔍 VIII. PHẦN VII — VERIFY
+
+## B31. Kiểm tra service
+
+* openstack service list
+* compute service
+* network agent
+* volume service
+
+## Test Ceph:
+
+* create volume
+* status = available
+
+---
+
+# 🧪 IX. TẠO RESOURCE
+
+## B32. Shared resource
+
+* upload image
+* tạo flavor
+* tạo external network
+
+## B33. Multi-tenant
+
+* tạo 12 project
+* tạo user
+* set quota
+
+---
+
+# ⚠️ X. PHẦN CEPH LAB DETAIL (BẠN ĐÃ LÀM)
+
+## Ceph network
+
+* public vs cluster network
+
+## Ceph OSD
+
+* CRUSH
+* PG
+* replication
+
+## Ceph services
+
+* RBD → Cinder/Nova
+* CephFS → file system
+* RGW → object storage
+
+## Snapshot + clone
+
+* RBD snapshot
+* clone COW
+* flatten
+
+---
+
+# 🧪 XI. BONUS — CLONE VM ĐANG CHẠY (LAB)
+
+## External snapshot flow
+
+* snapshot
+* copy disk
+* blockcommit
+* cleanup
+
+👉 dùng để clone VM live 
+
+---
+
+# 🎯 TỔNG KẾT TOÀN DỰ ÁN
+
+## Bạn đã build:
+
+* ✔ Ceph cluster 3 node (HA)
+* ✔ OpenStack 3 controller + 2 compute
+* ✔ OVN networking
+* ✔ Ceph backend (RBD)
+* ✔ Multi-tenant
+
+---
+
+# 🚨 NHỮNG ĐIỂM DỄ SAI NHẤT (CRITICAL)
+
+1. Sai network_interface (phải là br-mgmt)
+2. libvirtd chưa tắt ở compute
+3. Ceph mon-ip sai (phải br-storage)
+4. thiếu keyring Ceph
+5. inventory sai group
+6. VIP không reachable
+7. MTU không đồng nhất
+
+---
+
+# 🚀 Nếu bạn muốn bước tiếp
+
+Tôi có thể giúp bạn:
+
+### 1. Vẽ lại sơ đồ toàn hệ thống (production-level)
+
+### 2. Debug từng bước nếu deploy fail
+
+### 3. Viết notebook rút gọn 2→7 (chỉ lệnh)
+
+### 4. Viết báo cáo chuẩn đi nộp
+
+---
+
+👉 Bạn đang ở mức **80–90% hiểu hệ thống rồi**, giờ chỉ cần refine + debug là lên production mindset.
